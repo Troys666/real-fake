@@ -25,7 +25,7 @@ class ImgFeatureExtractor():
         ImageNetPath = self.args.imagenet_path
         dataset = "imagenet1k"
         real_dst_train = get_generation_dataset(ImageNetPath, split="train",subset=dataset,filelist="file_list.txt")
-        dataloader = self.get_subdataset_loader(real_dst_train, bsz, num_chunks=1)
+        dataloader = self.get_subdataset_loader(real_dst_train, bsz, num_chunks=4)
         # Model
         if self.model in ["VIT_L"]:
             model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14").to(self.device)
@@ -46,7 +46,7 @@ class ImgFeatureExtractor():
             for idx in range(bs):
                 torch.save(image_features[idx], out_paths[idx])
                 
-    def get_subdataset_loader(self, real_dst_train, bsz, num_chunks=1):
+    def get_subdataset_loader(self, real_dst_train, bsz, num_chunks=4):
         # split Task
         # num_chunks = 8
         chunk_size = len(real_dst_train) // num_chunks
