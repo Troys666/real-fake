@@ -274,20 +274,41 @@ def get_image_paths_from_file(file_path, subset):
     
     else:
         # 原有的逻辑，用于其他数据集
-        valid_labels = imagenet_subclass_dict[subset]
-        
-        image_paths, labels = [], []
-        for line in lines:
-            label = int(line.split()[-1])       
-            if not label in valid_labels:
-                continue
-            if subset in ['imageneta']:
-                image_paths.append(' '.join(line.split()[:-1]))
-            else:
-                image_paths.append(line.split()[0])
-            labels.append(label)
-        
-        label_map = {value: index for index, value in enumerate(valid_labels)}
+        if subset == "imagenette":
+            # 对于imagenette，按类别名称过滤，不按数值标签过滤
+            imagenette_classes = ['n01440764', 'n02102040', 'n02979186', 'n03000684', 'n03028079', 
+                                 'n03394916', 'n03417042', 'n03425413', 'n03445777', 'n03888257']
+            
+            image_paths, labels = [], []
+            class_to_label = {class_name: idx for idx, class_name in enumerate(imagenette_classes)}
+            
+            for line in lines:
+                path = line.split()[0]
+                class_name = path.split('/')[0]  # 提取类别名称
+                
+                if class_name in imagenette_classes:
+                    image_paths.append(path)
+                    labels.append(class_to_label[class_name])
+            
+            # 为imagenette创建标签映射
+            label_map = {idx: idx for idx in range(len(imagenette_classes))}
+            
+        else:
+            # 其他数据集的原有逻辑
+            valid_labels = imagenet_subclass_dict[subset]
+            
+            image_paths, labels = [], []
+            for line in lines:
+                label = int(line.split()[-1])       
+                if not label in valid_labels:
+                    continue
+                if subset in ['imageneta']:
+                    image_paths.append(' '.join(line.split()[:-1]))
+                else:
+                    image_paths.append(line.split()[0])
+                labels.append(label)
+            
+            label_map = {value: index for index, value in enumerate(valid_labels)}
         
         print("Total Length:",len(image_paths),len(labels))    
         
