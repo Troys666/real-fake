@@ -22,7 +22,7 @@ for ((i=0; i<$length; i++)); do
         --train_data_dir $DATASET_NAME --caption_column="text" \
         --report_to=tensorboard \
         --resolution=512 --random_flip \
-        --train_batch_size=8 \
+        --train_batch_size=4 \
         --num_train_epochs=100 --checkpointing_steps=500 \
         --learning_rate=1e-04 --lr_scheduler="constant" \
         --seed=42 \

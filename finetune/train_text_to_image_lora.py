@@ -174,6 +174,12 @@ def parse_args():
         default=None,
         help="The directory where the downloaded models and datasets will be stored.",
     )
+    parser.add_argument(
+        "--dataset_subset",
+        type=str,
+        default="imagenet1k",
+        help="Dataset subset to use: imagenette, imagewoof, imagefruit, imageyellow, imagenet1k, etc.",
+    )
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
     parser.add_argument(
         "--resolution",
@@ -583,9 +589,14 @@ def main():
             sys.path.append('/data/st/real-fake')
             from data.imagenet_with_captions import create_imagenet_caption_dataset
             
-            # 使用自定义数据加载器
+            # 使用自定义数据加载器，传入数据集子集参数
             caption_root = "/data/st/real-fake/ImageNet_BLIP2_caption_json/ImageNet_BLIP2_caption_json"
-            train_dataset = create_imagenet_caption_dataset(args.train_data_dir, caption_root, split="train")
+            train_dataset = create_imagenet_caption_dataset(
+                args.train_data_dir, 
+                caption_root, 
+                split="train",
+                subset=args.dataset_subset  # 传入数据集子集参数
+            )
             dataset = {"train": train_dataset}
         else:
             # 原有的imagefolder加载方式作为备用
@@ -647,7 +658,12 @@ def main():
     def load_embeddings(examples, is_train=True):
         embeddings = []
         for emb_path in examples[embedding_column]:
-            embeddings.append(torch.load(os.path.join("./LoRA/CLIPEmbedding/train", emb_path)))
+            if emb_path is not None and emb_path != "None":
+                # 如果有预计算的embedding，加载它
+                embeddings.append(torch.load(os.path.join("./LoRA/CLIPEmbedding/train", emb_path)))
+            else:
+                # 如果没有预计算的embedding，返回None，后续会实时计算
+                embeddings.append(None)
         return embeddings
 
     # Preprocessing the datasets.
@@ -693,7 +709,16 @@ def main():
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
         input_ids = torch.stack([example["input_ids"] for example in examples])
-        img_embeddings = torch.stack([example["img_features"] for example in examples])
+        
+        # 处理img_features，可能为None
+        img_features_list = [example["img_features"] for example in examples]
+        if all(feat is not None for feat in img_features_list):
+            # 如果所有特征都存在，堆叠它们
+            img_embeddings = torch.stack(img_features_list)
+        else:
+            # 如果有None值，创建零tensor或跳过
+            img_embeddings = None
+            
         return {"pixel_values": pixel_values, "input_ids": input_ids, "img_features": img_embeddings}
 
     # DataLoaders creation:
@@ -814,7 +839,8 @@ def main():
                 # Get the text embedding for conditioning
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0]
                 
-                if args.guidance_token > 0: #! 8.0
+                # 只在有预计算特征且guidance_token > 0时使用guidance token
+                if args.guidance_token > 0 and batch["img_features"] is not None: #! 8.0
                     guidance_token = torch.mean(batch["img_features"],axis=0)
                     # hidden_dim = guidance_token.shape[-1]
                     # repeated_guidance_token = guidance_token.repeat(bsz).view(bsz, hidden_dim) # n * 1 * 784
