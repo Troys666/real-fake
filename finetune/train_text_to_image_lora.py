@@ -576,15 +576,26 @@ def main():
             cache_dir=args.cache_dir,
         )
     else:
-        #! load our dataset
-        data_files = {} 
+        #! load our dataset with BLIP2 captions
         if args.train_data_dir is not None:
+            # 导入自定义数据加载器
+            import sys
+            sys.path.append('/data/st/real-fake')
+            from data.imagenet_with_captions import create_imagenet_caption_dataset
+            
+            # 使用自定义数据加载器
+            caption_root = "/data/st/real-fake/ImageNet_BLIP2_caption_json/ImageNet_BLIP2_caption_json"
+            train_dataset = create_imagenet_caption_dataset(args.train_data_dir, caption_root, split="train")
+            dataset = {"train": train_dataset}
+        else:
+            # 原有的imagefolder加载方式作为备用
+            data_files = {} 
             data_files["train"] = os.path.join(args.train_data_dir, "**")
-        dataset = load_dataset(
-            "imagefolder",
-            data_files=data_files,
-            cache_dir=args.cache_dir,
-        )
+            dataset = load_dataset(
+                "imagefolder",
+                data_files=data_files,
+                cache_dir=args.cache_dir,
+            )
         # See more about loading custom images at
         # https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder
     
