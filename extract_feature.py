@@ -36,9 +36,18 @@ class ImgFeatureExtractor():
         for i, batch in tqdm(enumerate(dataloader), total=len(dataloader)):
             targets, image_paths, image_names, class_names = batch
             bs = len(image_paths)
-            # 优化：使用扁平化命名，避免子文件夹
-            # 将类别名和文件名合并，用下划线连接
-            out_paths = [os.path.join(output_dir, f'{class_names[idx]}_{image_names[idx]}.pt') for idx in range(bs)]
+            # 简化：直接从image_path构建输出文件名
+            out_paths = []
+            for idx in range(bs):
+                # 从完整路径构建输出文件名
+                # 例如：/data/st/data/ILSVRC/Data/CLS-LOC/train/n01440764/n01440764_10026 -> n01440764_n01440764_10026.pt
+                img_path = image_paths[idx]  # 这个路径已经不包含.JPEG后缀
+                parts = img_path.split('/')
+                class_name = parts[-2]  # n01440764
+                file_name = parts[-1]   # n01440764_10026
+                out_filename = f"{class_name}_{file_name}.pt"
+                out_paths.append(os.path.join(output_dir, out_filename))
+            
             if os.path.exists(out_paths[-1]):
                 continue
 
