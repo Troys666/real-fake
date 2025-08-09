@@ -244,26 +244,54 @@ def get_image_paths_from_file(file_path, subset):
     with open(file_path, 'r') as f:
         lines = f.readlines()
     
-    valid_labels = imagenet_subclass_dict[subset]
+    # 对于imagenet1k，不需要按标签过滤，而是按ImageNet类别处理
+    if subset == "imagenet1k":
+        image_paths, labels = [], []
+        # 创建类别名称到标签的映射
+        class_name_to_label = {}
+        current_label = 0
+        
+        for line in lines:
+            path = line.split()[0]
+            class_name = path.split('/')[0]  # 提取类别名称（如n01440764）
+            
+            # 为新的类别分配标签
+            if class_name not in class_name_to_label:
+                class_name_to_label[class_name] = current_label
+                current_label += 1
+            
+            image_paths.append(path)
+            labels.append(class_name_to_label[class_name])
+        
+        print(f"Total Length: {len(image_paths)} {len(labels)}")
+        print(f"Total Classes: {len(class_name_to_label)}")
+        
+        # 返回标签映射，这里valid_labels就是所有找到的标签
+        valid_labels = list(range(len(class_name_to_label)))
+        label_map = {label: label for label in valid_labels}  # 恒等映射
+        
+        return image_paths, labels, label_map
     
-    image_paths, labels = [], []
-    for line in lines:
-        label = int(line.split()[-1])       
-        if not label in valid_labels:
-            continue
-        if subset in ['imageneta']:
-            image_paths.append(' '.join(line.split()[:-1]))
-
-        else:
-            image_paths.append(line.split()[0])
-        labels.append(label)
-    
-    label_map = {value: index for index, value in enumerate(valid_labels)}
-    
-    print("Total Length:",len(image_paths),len(labels))    
-    
-    
-    return image_paths, labels, label_map
+    else:
+        # 原有的逻辑，用于其他数据集
+        valid_labels = imagenet_subclass_dict[subset]
+        
+        image_paths, labels = [], []
+        for line in lines:
+            label = int(line.split()[-1])       
+            if not label in valid_labels:
+                continue
+            if subset in ['imageneta']:
+                image_paths.append(' '.join(line.split()[:-1]))
+            else:
+                image_paths.append(line.split()[0])
+            labels.append(label)
+        
+        label_map = {value: index for index, value in enumerate(valid_labels)}
+        
+        print("Total Length:",len(image_paths),len(labels))    
+        
+        return image_paths, labels, label_map
 
 class ImageNetCustom(Dataset):
     def __init__(self, root_dir="/zhaobai/ImageNet-1K/train", subset="imagenet1k", transform=None, file_list="file_list.txt"):
@@ -308,11 +336,17 @@ class ImageNetGeneration(Dataset):
     
     def __getitem__(self, idx):
         image_name = self.image_paths[idx]
-        image_path = f"{self.root_dir}/{image_name}"
+        # 自动添加.JPEG扩展名，因为file_list.txt中没有包含扩展名
+        if not image_name.endswith('.JPEG') and not image_name.endswith('.jpg'):
+            image_path = f"{self.root_dir}/{image_name}.JPEG"
+        else:
+            image_path = f"{self.root_dir}/{image_name}"
         label = self.labels[idx]
         # image = Image.open(image_path).convert("RGB")
         class_name = imagenet_classes[int(label)]
-        image_name = image_name.split(".")[0][1:]
+        image_name = image_name.split(".")[0]  # 移除可能的扩展名
+        if image_name.startswith('/'):
+            image_name = image_name[1:]  # 移除开头的斜杠
         
         return (label, image_path, image_name, class_name)
 

@@ -37,7 +37,7 @@ def get_image_paths_from_file(file_path):
 def mirror_directory_structure(img_paths, source_directory, dest_directory):
     """
     Creates a mirror of the directory structure of source_directory in dest_directory.
-    It does this based on the unique class directories specified in img_paths.
+    Uses efficient batch creation method to avoid performance issues.
     
     Args:
     img_paths (list): List of image paths with structure 'class_name/image_name.jpeg'.
@@ -48,9 +48,29 @@ def mirror_directory_structure(img_paths, source_directory, dest_directory):
     None
     """
     
-    unique_class_names = set(path.split('/')[1] for path in img_paths)
-    for class_name in unique_class_names:
-        os.makedirs(os.path.join(dest_directory, class_name), exist_ok=True)
+    # 高效方式：直接从源目录获取所有类别文件夹并批量创建
+    print(f"Creating directory structure in {dest_directory}...")
+    
+    # 确保目标根目录存在
+    os.makedirs(dest_directory, exist_ok=True)
+    
+    # 获取源目录中的所有类别文件夹（n开头的）
+    source_classes = [d for d in os.listdir(source_directory) 
+                     if os.path.isdir(os.path.join(source_directory, d)) and d.startswith('n')]
+    
+    print(f"Found {len(source_classes)} class directories to create")
+    
+    # 批量创建目录，使用更高效的方式
+    for i, class_name in enumerate(source_classes):
+        dest_class_dir = os.path.join(dest_directory, class_name)
+        if not os.path.exists(dest_class_dir):
+            os.mkdir(dest_class_dir)  # 使用mkdir代替makedirs，因为父目录已存在
+        
+        # 每100个显示进度
+        if (i + 1) % 100 == 0:
+            print(f"Created {i + 1}/{len(source_classes)} directories")
+    
+    print("Directory structure creation completed!")
         
 def create_ImageNetFolder(root_dir, out_dir):
     image_paths, labels = get_image_paths_from_file(os.path.join(root_dir,"file_list.txt")) 
@@ -58,4 +78,5 @@ def create_ImageNetFolder(root_dir, out_dir):
 
 if __name__ == "__main__":
     torch.backends.cudnn.benchmark = True
-    main()
+    # 可以在这里添加测试代码
+    pass

@@ -21,9 +21,7 @@ class ImgFeatureExtractor():
                  
     def extract_feature(self):
         bsz = 16
-        # 优化：使用扁平化文件结构，避免创建太多子文件夹
-        output_dir = f"./LoRA/ImageNet1K_CLIPEmbedding/{self.model}"
-        os.makedirs(output_dir, exist_ok=True)
+        create_ImageNetFolder(root_dir=f'{self.args.imagenet_path}train', out_dir=f"./LoRA/ImageNet1K_CLIPEmbedding/{self.model}")
         ImageNetPath = self.args.imagenet_path
         dataset = "imagenet1k"
         real_dst_train = get_generation_dataset(ImageNetPath, split="train",subset=dataset,filelist="file_list.txt")
@@ -36,30 +34,19 @@ class ImgFeatureExtractor():
         for i, batch in tqdm(enumerate(dataloader), total=len(dataloader)):
             targets, image_paths, image_names, class_names = batch
             bs = len(image_paths)
-            # 简化：直接从image_path构建输出文件名
-            out_paths = []
-            for idx in range(bs):
-                # 从完整路径构建输出文件名
-                # 例如：/data/st/data/ILSVRC/Data/CLS-LOC/train/n01440764/n01440764_10026 -> n01440764_n01440764_10026.pt
-                img_path = image_paths[idx]  # 这个路径已经不包含.JPEG后缀
-                parts = img_path.split('/')
-                class_name = parts[-2]  # n01440764
-                file_name = parts[-1]   # n01440764_10026
-                out_filename = f"{class_name}_{file_name}.pt"
-                out_paths.append(os.path.join(output_dir, out_filename))
-            
+            out_paths = [os.path.join(f"./LoRA/ImageNet1K_CLIPEmbedding/{self.model}",f'{image_names[idx]}.pt') for idx in range(bs)]
             if os.path.exists(out_paths[-1]):
                 continue
 
             if self.model in ["VIT_L"]:
-                images = [Image.open(image_paths[idx]+'.JPEG') for idx in range(bs)]
+                images = [Image.open(image_paths[idx]) for idx in range(bs)]
                 inputs = processor(images=images, return_tensors="pt").to(self.device)
                 image_features = model.get_image_features(**inputs).to(torch.float16)
             
             for idx in range(bs):
                 torch.save(image_features[idx], out_paths[idx])
                 
-    def get_subdataset_loader(self, real_dst_train, bsz, num_chunks=4):
+    def get_subdataset_loader(self, real_dst_train, bsz, num_chunks=1):
         # split Task
         # num_chunks = 8
         chunk_size = len(real_dst_train) // num_chunks
