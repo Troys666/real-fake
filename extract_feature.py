@@ -21,7 +21,9 @@ class ImgFeatureExtractor():
                  
     def extract_feature(self):
         bsz = 16
-        create_ImageNetFolder(root_dir=f'{self.args.imagenet_path}train', out_dir=f"./LoRA/ImageNet1K_CLIPEmbedding/{self.model}")
+        # 优化：使用扁平化文件结构，避免创建太多子文件夹
+        output_dir = f"./LoRA/ImageNet1K_CLIPEmbedding/{self.model}"
+        os.makedirs(output_dir, exist_ok=True)
         ImageNetPath = self.args.imagenet_path
         dataset = "imagenet1k"
         real_dst_train = get_generation_dataset(ImageNetPath, split="train",subset=dataset,filelist="file_list.txt")
@@ -34,12 +36,14 @@ class ImgFeatureExtractor():
         for i, batch in tqdm(enumerate(dataloader), total=len(dataloader)):
             targets, image_paths, image_names, class_names = batch
             bs = len(image_paths)
-            out_paths = [os.path.join(f"./LoRA/ImageNet1K_CLIPEmbedding/{self.model}",f'{image_names[idx]}.pt') for idx in range(bs)]
+            # 优化：使用扁平化命名，避免子文件夹
+            # 将类别名和文件名合并，用下划线连接
+            out_paths = [os.path.join(output_dir, f'{class_names[idx]}_{image_names[idx]}.pt') for idx in range(bs)]
             if os.path.exists(out_paths[-1]):
                 continue
 
             if self.model in ["VIT_L"]:
-                images = [Image.open(image_paths[idx]) for idx in range(bs)]
+                images = [Image.open(image_paths[idx]+'.JPEG') for idx in range(bs)]
                 inputs = processor(images=images, return_tensors="pt").to(self.device)
                 image_features = model.get_image_features(**inputs).to(torch.float16)
             
