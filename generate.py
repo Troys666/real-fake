@@ -1,4 +1,9 @@
+# 设置 HTTP/HTTPS 代理
 import os
+os.environ["http_proxy"] = "http://127.0.0.1:7890"
+os.environ["https_proxy"] = "http://127.0.0.1:7890"
+
+
 import re
 import shutil
 import argparse
@@ -101,8 +106,13 @@ class StableDiffusionHandler:
             stablediffusion_path, safety_checker=None, torch_dtype=torch.float16, add_watermarker=False
         )
         if lora:
-            print("Load LoRA:", os.path.join(self.lora_path,lora))
-            pipe.unet.load_attn_procs(os.path.join(self.lora_path,lora))
+            if lora == "all":
+                # 使用全局 LoRA 权重 - self.lora_path 就是权重文件路径
+                print("Load LoRA:", self.lora_path)
+                pipe.unet.load_attn_procs(self.lora_path)
+            else:
+                print("Load LoRA:", os.path.join(self.lora_path, lora))
+                pipe.unet.load_attn_procs(os.path.join(self.lora_path, lora))
 
         pipe = self.set_scheduler(pipe)
         pipe.to("cuda")
@@ -113,11 +123,16 @@ class StableDiffusionHandler:
         pipe.enable_model_cpu_offload()
         return pipe
     
-    def get_img2img(self,img2img_path, lora=None):
+    def get_img2img(self, img2img_path, lora=None):
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(img2img_path, safety_checker=None, torch_dtype=torch.float16)
         if lora:
-            print("Load LoRA:", os.path.join(self.lora_path,lora))
-            pipe.unet.load_attn_procs(os.path.join(self.lora_path,lora))
+            if lora == "all":
+                # 使用全局 LoRA 权重 - self.lora_path 就是权重文件路径
+                print("Load LoRA:", self.lora_path)
+                pipe.unet.load_attn_procs(self.lora_path)
+            else:
+                print("Load LoRA:", os.path.join(self.lora_path, lora))
+                pipe.unet.load_attn_procs(os.path.join(self.lora_path, lora))
         pipe = self.set_scheduler(pipe)
         pipe.to("cuda")
         if self.if_compile: # False
@@ -232,14 +247,27 @@ class StableDiffusionHandler:
     
     ### Misc
     def get_pipe(self,pid):
-        if self.method in ['SDI2I_LoRA']:
-            pipe = self.get_img2img(pid)
-        elif self.method in ['SDT2I_LoRA']: # SDI2I_LoRA'
-            pipe = self.get_stablediffusion(pid)
-        elif self.method in ['SDI2I']:
-            pipe = self.get_img2img()
-        elif self.method in ['SDT2I']:
-            pipe = self.get_stablediffusion()
+        # 如果是 "all"，说明使用全局 LoRA，需要传入基础模型路径
+        if pid == "all":
+            # 使用 Stable Diffusion v1.5 作为基础模型
+            base_model_path = "runwayml/stable-diffusion-v1-5"
+            if self.method in ['SDI2I_LoRA']:
+                pipe = self.get_img2img(base_model_path, "all")  # 传入 LoRA 标识
+            elif self.method in ['SDT2I_LoRA']:
+                pipe = self.get_stablediffusion(base_model_path, "all")
+            elif self.method in ['SDI2I']:
+                pipe = self.get_img2img(base_model_path)
+            elif self.method in ['SDT2I']:
+                pipe = self.get_stablediffusion(base_model_path)
+        else:
+            if self.method in ['SDI2I_LoRA']:
+                pipe = self.get_img2img(pid)
+            elif self.method in ['SDT2I_LoRA']:
+                pipe = self.get_stablediffusion(pid)
+            elif self.method in ['SDI2I']:
+                pipe = self.get_img2img(pid)
+            elif self.method in ['SDT2I']:
+                pipe = self.get_stablediffusion(pid)
             
         return pipe
     
@@ -247,8 +275,8 @@ class StableDiffusionHandler:
         img_size = (self.img_size, self.img_size)   # (512, 512)
         bsz = self.args.batch_size  # 24
         out_version = self.args.version # "v52"
-        create_ImageNetFolder(root_dir=f'{self.args.imagnet_path}/train', out_dir=f"{self.args.syn_path}/train")
-        ImageNetPath = self.args.imagnet_path
+        create_ImageNetFolder(root_dir=f'{self.args.imagenet_path}/train', out_dir=f"{self.args.syn_path}/train")
+        ImageNetPath = self.args.imagenet_path
         dataset = self.args.dataset # "imagenette"
         use_caption = True if self.args.use_caption == 'blip2' else False
         caption_path = "./ImageNet_BLIP2_caption_json/ImageNet_BLIP2_caption_json"
@@ -288,7 +316,7 @@ class StableDiffusionHandler:
     
     def get_guidance_tokens_v2(self, class_id, image_names):
         if self.args.dataset in ['imagenette','imagenet100','imagenet1k']:
-            root='./LoRA/CLIPEmbedding/train'
+            root='./LoRA/ImageNet1K_CLIPEmbedding/VIT_L'
             
 
         dir_path = os.path.join(f"{root}", class_id)
