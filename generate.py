@@ -242,6 +242,7 @@ class StableDiffusionHandler:
     
     ### Misc
     def get_pipe(self,pid):
+        pipe = None  # 初始化pipe变量
         # 如果是 "all"，说明使用全局 LoRA，需要传入基础模型路径
         if pid == "all":
             # 使用 Stable Diffusion v1.5 作为基础模型
@@ -263,6 +264,9 @@ class StableDiffusionHandler:
                 pipe = self.get_img2img(pid)
             elif self.method in ['SDT2I']:
                 pipe = self.get_stablediffusion(pid)
+        
+        if pipe is None:
+            raise ValueError(f"Unsupported method: {self.method}")
             
         return pipe
     
