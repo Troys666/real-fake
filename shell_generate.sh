@@ -3,7 +3,7 @@
 dataset='imagenette'
 versions=('v1')
 loras=('gt_dm')
-methods=('SDI2I_LoRA')
+methods=('SDI2I_LoRA')#image2image
 guidance_tokens=('Yes')
 SDXLs=('No')
 image_strengths=(0.75)

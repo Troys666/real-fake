@@ -3,3 +3,6 @@
 /blip2.zip
 /results
 /synthetic_data
+data/__pycache__/new_load_data.cpython-310.pyc
+lira_exp/indices/indice_0.npy
+data/__pycache__/imagenet_with_captions.cpython-310.pyc

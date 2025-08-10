@@ -1,9 +1,4 @@
-# 设置 HTTP/HTTPS 代理
 import os
-os.environ["http_proxy"] = "http://127.0.0.1:7890"
-os.environ["https_proxy"] = "http://127.0.0.1:7890"
-
-
 import re
 import shutil
 import argparse

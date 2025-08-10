@@ -599,7 +599,7 @@ def main():
             )
             dataset = {"train": train_dataset}
         else:
-            # 原有的imagefolder加载方式作为备用
+            # 原有的imagefolder加载方式作为备用，这里是原有的方式
             data_files = {} 
             data_files["train"] = os.path.join(args.train_data_dir, "**")
             dataset = load_dataset(
@@ -657,13 +657,10 @@ def main():
     # Load Pre-extracted CLIP embeddings:
     def load_embeddings(examples, is_train=True):
         embeddings = []
+        # print(examples['img_features'])
+        # import pdb;pdb.set_trace()
         for emb_path in examples[embedding_column]:
-            if emb_path is not None and emb_path != "None":
-                # 如果有预计算的embedding，加载它
-                embeddings.append(torch.load(os.path.join("./LoRA/CLIPEmbedding/train", emb_path)))
-            else:
-                # 如果没有预计算的embedding，返回None，后续会实时计算
-                embeddings.append(None)
+            embeddings.append(torch.load(os.path.join("./LoRA/ImageNet1K_CLIPEmbedding/VIT_L", emb_path)))
         return embeddings
 
     # Preprocessing the datasets.
@@ -710,14 +707,7 @@ def main():
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
         input_ids = torch.stack([example["input_ids"] for example in examples])
         
-        # 处理img_features，可能为None
-        img_features_list = [example["img_features"] for example in examples]
-        if all(feat is not None for feat in img_features_list):
-            # 如果所有特征都存在，堆叠它们
-            img_embeddings = torch.stack(img_features_list)
-        else:
-            # 如果有None值，创建零tensor或跳过
-            img_embeddings = None
+        img_embeddings = torch.stack([example["img_features"] for example in examples])
             
         return {"pixel_values": pixel_values, "input_ids": input_ids, "img_features": img_embeddings}
 
@@ -838,9 +828,7 @@ def main():
 
                 # Get the text embedding for conditioning
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0]
-                
-                # 只在有预计算特征且guidance_token > 0时使用guidance token
-                if args.guidance_token > 0 and batch["img_features"] is not None: #! 8.0
+                if args.guidance_token > 0 : #! 8.0
                     guidance_token = torch.mean(batch["img_features"],axis=0)
                     # hidden_dim = guidance_token.shape[-1]
                     # repeated_guidance_token = guidance_token.repeat(bsz).view(bsz, hidden_dim) # n * 1 * 784

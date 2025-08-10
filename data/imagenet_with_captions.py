@@ -84,11 +84,16 @@ class ImageNetWithCaptions(Dataset):
                     caption = f"an image of {class_dir}"
                     print(f"Warning: No caption found for {image_file}, using default")
                 
+                # 构建CLIP嵌入文件的相对路径
+                # 从 n01440764/n01440764_10026.JPEG 变成 n01440764/n01440764_10026.pt
+                image_name_without_ext = image_file.replace('.JPEG', '')
+                clip_embedding_path = f"{class_dir}/{image_name_without_ext}.pt"
+                
                 self.data.append({
                     'image': image_path,
                     'text': caption,
                     'class_id': class_dir,
-                    'img_features': None  # 预留给特征提取
+                    'img_features': clip_embedding_path  # CLIP嵌入文件的相对路径
                 })
         
         print(f"Loaded {len(self.data)} image-caption pairs")
@@ -122,7 +127,7 @@ def create_imagenet_caption_dataset(image_root, caption_root, split="train", sub
     features = Features({
         'image': ImageFeature(),  # 自动处理图像加载和转换
         'text': Value('string'),
-        'img_features': Value('null')
+        'img_features': Value('string')
     })
     
     # 转换为HuggingFace Dataset
