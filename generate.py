@@ -274,7 +274,7 @@ class StableDiffusionHandler:
         img_size = (self.img_size, self.img_size)   # (512, 512)
         bsz = self.args.batch_size  # 24
         out_version = self.args.version # "v52"
-        create_ImageNetFolder(root_dir=f'{self.args.imagenet_path}/train', out_dir=f"{self.args.syn_path}/train")
+        create_ImageNetFolder(root_dir=f'{self.args.imagenet_path}/train', out_dir=f"{self.args.syn_path}/train1")#这里改合成数据的路径
         ImageNetPath = self.args.imagenet_path
         dataset = self.args.dataset # "imagenette"
         use_caption = True if self.args.use_caption == 'blip2' else False
@@ -343,7 +343,7 @@ class StableDiffusionHandler:
         for i, batch in tqdm(enumerate(dataloader), total=len(dataloader)):
             targets, image_paths, image_names, class_names = batch
             bs = len(image_paths)
-            out_paths = [os.path.join(f"{self.args.syn_path}/train",f'{image_names[idx]}.jpg') for idx in range(bs)]
+            out_paths = [os.path.join(f"{self.args.syn_path}/train1",f'{image_names[idx]}.jpg') for idx in range(bs)]#其实是这里改啦
             if os.path.exists(out_paths[-1]):
                 continue
             

@@ -3,7 +3,7 @@
 dataset='imagenette'
 versions=('v1')
 loras=('gt_dm')
-methods=('SDI2I_LoRA') #image2image
+methods=('SDI2I_LoRA')
 guidance_tokens=('Yes')
 SDXLs=('No')
 image_strengths=(0.75)
@@ -19,7 +19,6 @@ for ((i=0; i<$length; i++)); do
     cw="${cws[$i]}"
     imst="${image_strengths[$i]}"
     echo "$ver LoRA: $lora Method $method"
-    # Iterate from 0-7, cover all case for nchunks <= 8
     
     # 生成imagenette数据集 - 需要8个chunk来覆盖所有10个类别
     for chunk_idx in {0..7}; do
@@ -28,7 +27,7 @@ for ((i=0; i<$length; i++)); do
         --use_caption "blip2" --dataset $dataset --lora_path $lora --if_SDXL $SDXL --use_guidance $guidance_token \
         --img_size 512 --cross_attention_scale 0.5 --image_strength $imst --nchunks 8 \
         --imagenet_path "/data/st/data/ILSVRC/Data/CLS-LOC" \
-        --syn_path "/data/st/real-fake/synthetic_data" > results/gen_chunk1${chunk_idx}.out 2>&1
+        --syn_path "/data/st/real-fake/synthetic_data" > results/gen_chunk${chunk_idx}.out 2>&1
         
         if [ $? -ne 0 ]; then
             echo "Error in chunk $chunk_idx, check results/gen_chunk${chunk_idx}.out"
@@ -37,6 +36,6 @@ for ((i=0; i<$length; i++)); do
         echo "Chunk $chunk_idx completed"
     done
     echo "Imagenette generation completed"
-    
-    echo "All processes completed"
 done
+
+echo "All processes completed"
