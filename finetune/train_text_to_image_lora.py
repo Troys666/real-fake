@@ -534,6 +534,29 @@ def main():
         # Compute SNR.
         snr = (alpha / sigma) ** 2
         return snr
+    def compute_snr1(timesteps):
+        """
+        Computes SNR as per https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L847-L849
+        """
+        alphas_cumprod = noise_scheduler.alphas_cumprod
+        sqrt_alphas_cumprod = alphas_cumprod**0.5
+        sqrt_one_minus_alphas_cumprod = (1.0 - alphas_cumprod) ** 0.5
+
+        # Expand the tensors.
+        # Adapted from https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L1026
+        sqrt_alphas_cumprod = sqrt_alphas_cumprod.to(device=timesteps.device)[timesteps].float()
+        while len(sqrt_alphas_cumprod.shape) < len(timesteps.shape):
+            sqrt_alphas_cumprod = sqrt_alphas_cumprod[..., None]
+        alpha = sqrt_alphas_cumprod.expand(timesteps.shape)
+
+        sqrt_one_minus_alphas_cumprod = sqrt_one_minus_alphas_cumprod.to(device=timesteps.device)[timesteps].float()
+        while len(sqrt_one_minus_alphas_cumprod.shape) < len(timesteps.shape):
+            sqrt_one_minus_alphas_cumprod = sqrt_one_minus_alphas_cumprod[..., None]
+        sigma = sqrt_one_minus_alphas_cumprod.expand(timesteps.shape)
+
+        # Compute SNR.
+        snr = (1/ sigma) ** 2
+        return snr
 
     lora_layers = AttnProcsLayers(unet.attn_processors)
 
@@ -869,11 +892,15 @@ def main():
                     loss = loss.mean()
                     # print("Loss",loss)
                     
-                #### Add Dist Matching Loss ####
+                #### Add Dist Matching Loss - Only after half of training epochs ####
                 if args.dist_match:
-                    mse_loss_weights = mse_loss_weights.view(bsz, 1, 1, 1)
-                    model_pred_ws = (model_pred.float() * mse_loss_weights).sum(dim=0)
-                    target_ws = (target.float() * mse_loss_weights).sum(dim=0)
+                    snr1=compute_snr1(timesteps)
+                    mse_loss_weights1 = (
+                        torch.stack([snr1, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr1
+                    )
+                    mse_loss_weights1 = mse_loss_weights1.view(bsz, 1, 1, 1)
+                    model_pred_ws = (model_pred.float() * mse_loss_weights1).sum(dim=0)
+                    target_ws = (target.float() * mse_loss_weights1).sum(dim=0)
                     dist_loss = F.mse_loss(model_pred_ws, target_ws, reduction="mean") 
                     loss = loss + dist_loss * args.dist_match
                     # print("Dist",dist_loss)

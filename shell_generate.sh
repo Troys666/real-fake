@@ -12,7 +12,7 @@ length=${#versions[@]}
 echo "start Generation Loop"
 for ((i=0; i<$length; i++)); do
     ver="${versions[$i]}"
-    lora="/data/st/real-fake/LoRA/checkpoint/simple_no_MMD_imagenette/pytorch_lora_weights.safetensors"
+    lora="/data/st/real-fake/LoRA/checkpoint/simple_50_MMD_imagenette/pytorch_lora_weights.safetensors"
     method="${methods[$i]}"
     guidance_token="${guidance_tokens[$i]}"
     SDXL="${SDXLs[$i]}"
@@ -28,7 +28,7 @@ for ((i=0; i<$length; i++)); do
         --use_caption "blip2" --dataset $dataset --lora_path $lora --if_SDXL $SDXL --use_guidance $guidance_token \
         --img_size 512 --cross_attention_scale 0.5 --image_strength $imst --nchunks 8 \
         --imagenet_path "/data/st/data/ILSVRC/Data/CLS-LOC" \
-        --syn_path "/data/st/real-fake/synthetic_data" > results/gen_chunk1${chunk_idx}.out 2>&1
+        --syn_path "/data/st/real-fake/synthetic_data" > results/gen_chunk${chunk_idx}.out 2>&1
         
         if [ $? -ne 0 ]; then
             echo "Error in chunk $chunk_idx, check results/gen_chunk${chunk_idx}.out"
