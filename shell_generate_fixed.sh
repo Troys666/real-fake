@@ -3,16 +3,16 @@
 dataset='imagenette'
 versions=('v1')
 loras=('gt_dm')
-methods=('SDI2I_LoRA')
+methods=('SDT2I_LoRA')
 guidance_tokens=('Yes')
 SDXLs=('No')
-image_strengths=(0.75)
+image_strengths=(0.00)
 
 length=${#versions[@]}
 echo "start Generation Loop"
 for ((i=0; i<$length; i++)); do
     ver="${versions[$i]}"
-    lora="/data/st/real-fake/LoRA/checkpoint/small_0.06_MMD_imagenette/pytorch_lora_weights.safetensors"
+    lora="/data/st/real-fake/LoRA/checkpoint/sim_MMD_imagenette/pytorch_lora_weights.safetensors"
     method="${methods[$i]}"
     guidance_token="${guidance_tokens[$i]}"
     SDXL="${SDXLs[$i]}"
