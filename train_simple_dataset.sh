@@ -6,7 +6,7 @@ export MODEL_NAME="/home/lkshpc/.cache/huggingface/hub/models--runwayml--stable-
 # 选择简单数据集 - 可以改成 imagewoof, imagefruit, imageyellow 等
 SIMPLE_DATASET="imagenette"  # 只有10个类别
 
-export OUTPUT_DIR="./LoRA/checkpoint/simple_small_MMD_${SIMPLE_DATASET}"
+export OUTPUT_DIR="./LoRA/checkpoint/small_0.06_MMD_${SIMPLE_DATASET}"
 export DATASET_NAME="/data/st/data/ILSVRC/Data/CLS-LOC/train" 
 export LOG_DIR="./LoRA/logs"
 

@@ -534,29 +534,6 @@ def main():
         # Compute SNR.
         snr = (alpha / sigma) ** 2
         return snr
-    def compute_snr1(timesteps):
-        """
-        Computes SNR as per https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L847-L849
-        """
-        alphas_cumprod = noise_scheduler.alphas_cumprod
-        sqrt_alphas_cumprod = alphas_cumprod**0.5
-        sqrt_one_minus_alphas_cumprod = (1.0 - alphas_cumprod) ** 0.5
-
-        # Expand the tensors.
-        # Adapted from https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L1026
-        sqrt_alphas_cumprod = sqrt_alphas_cumprod.to(device=timesteps.device)[timesteps].float()
-        while len(sqrt_alphas_cumprod.shape) < len(timesteps.shape):
-            sqrt_alphas_cumprod = sqrt_alphas_cumprod[..., None]
-        alpha = sqrt_alphas_cumprod.expand(timesteps.shape)
-
-        sqrt_one_minus_alphas_cumprod = sqrt_one_minus_alphas_cumprod.to(device=timesteps.device)[timesteps].float()
-        while len(sqrt_one_minus_alphas_cumprod.shape) < len(timesteps.shape):
-            sqrt_one_minus_alphas_cumprod = sqrt_one_minus_alphas_cumprod[..., None]
-        sigma = sqrt_one_minus_alphas_cumprod.expand(timesteps.shape)
-
-        # Compute SNR.
-        snr = (1/ sigma) ** 2
-        return snr
 
     lora_layers = AttnProcsLayers(unet.attn_processors)
 
@@ -892,15 +869,34 @@ def main():
                     loss = loss.mean()
                     # print("Loss",loss)
                     
-                #### Add Dist Matching Loss - Only after half of training epochs ####
+                #### Add Dist Matching Loss ####
                 if args.dist_match:
-                    snr1=compute_snr1(timesteps)
-                    mse_loss_weights1 = (
-                        torch.stack([snr1, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr1
+                    # 从当前batch的timesteps中随机选择一个统一的timestep
+                    unified_timestep = timesteps[torch.randint(0, len(timesteps), (1,)).item()]
+                    unified_timesteps = unified_timestep.repeat(bsz)
+                    
+                    # 使用统一timestep重新计算噪声latents
+                    unified_noisy_latents = noise_scheduler.add_noise(latents, noise, unified_timesteps)
+                    
+                    # 使用统一timestep重新预测
+                    unified_model_pred = unet(unified_noisy_latents, unified_timesteps, encoder_hidden_states).sample
+                    
+                    # 计算统一timestep下的目标
+                    if noise_scheduler.config.prediction_type == "epsilon":
+                        unified_target = noise
+                    elif noise_scheduler.config.prediction_type == "v_prediction":
+                        unified_target = noise_scheduler.get_velocity(latents, noise, unified_timesteps)
+                    
+                    # 计算统一timestep下的权重
+                    unified_snr = compute_snr(unified_timesteps)
+                    unified_mse_loss_weights = (
+                        torch.stack([unified_snr, args.snr_gamma * torch.ones_like(unified_timesteps)], dim=1).min(dim=1)[0] / unified_snr
                     )
-                    mse_loss_weights1 = mse_loss_weights1.view(bsz, 1, 1, 1)
-                    model_pred_ws = (model_pred.float() * mse_loss_weights1).sum(dim=0)
-                    target_ws = (target.float() * mse_loss_weights1).sum(dim=0)
+                    unified_mse_loss_weights = unified_mse_loss_weights.view(bsz, 1, 1, 1)
+                    
+                    # 计算加权预测和目标的和
+                    model_pred_ws = (unified_model_pred.float() * unified_mse_loss_weights).sum(dim=0)
+                    target_ws = (unified_target.float() * unified_mse_loss_weights).sum(dim=0)
                     dist_loss = F.mse_loss(model_pred_ws, target_ws, reduction="mean") 
                     loss = loss + dist_loss * args.dist_match
                     # print("Dist",dist_loss)
