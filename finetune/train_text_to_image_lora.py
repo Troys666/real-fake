@@ -48,11 +48,80 @@ from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
+# 添加小波变换相关导入
+try:
+    from pytorch_wavelets import DWTForward, DWTInverse
+    WAVELETS_AVAILABLE = True
+except ImportError:
+    print("Warning: pytorch_wavelets not available, using FFT-based frequency decomposition")
+    WAVELETS_AVAILABLE = False
+
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.20.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
+
+def frequency_decomposition(tensor, method='wavelet', wavelet='db3', J=2):
+    """
+    将张量分解为高频和低频部分
+    Args:
+        tensor: 输入张量 [B, C, H, W]
+        method: 'wavelet' 或 'fft'
+        wavelet: 小波类型 (仅当method='wavelet'时使用)
+        J: 分解层数
+    Returns:
+        low_freq: 低频部分
+        high_freq: 高频部分
+    """
+    print(f"[DEBUG] frequency_decomposition called with tensor shape: {tensor.shape}, method: {method}")
+    
+    if WAVELETS_AVAILABLE and method == 'wavelet':
+        # 使用小波变换
+        dwt = DWTForward(J=J, wave=wavelet).to(tensor.device)
+        idwt = DWTInverse(wave=wavelet).to(tensor.device)
+        
+        # 执行小波变换
+        coeffs = dwt(tensor)
+        low_freq_coeffs, high_freq_coeffs = coeffs
+        
+        # 重构低频部分（只用低频系数）
+        low_freq = idwt((low_freq_coeffs, [torch.zeros_like(h) for h in high_freq_coeffs]))
+        
+        # 重构高频部分（只用高频系数）
+        high_freq = idwt((torch.zeros_like(low_freq_coeffs), high_freq_coeffs))
+        
+        return low_freq, high_freq
+    else:
+        # 使用FFT基于频域分解
+        print(f"[DEBUG] Using FFT-based frequency decomposition")
+        B, C, H, W = tensor.shape
+        
+        # 对每个通道进行FFT
+        fft_tensor = torch.fft.fft2(tensor)
+        fft_shift = torch.fft.fftshift(fft_tensor)
+        
+        # 创建低通滤波器掩码（保留中心的低频部分）
+        center_h, center_w = H // 2, W // 2
+        cutoff = min(H, W) // 4  # 截止频率
+        print(f"[DEBUG] FFT cutoff frequency: {cutoff}, center: ({center_h}, {center_w})")
+        
+        y, x = torch.meshgrid(torch.arange(H), torch.arange(W), indexing='ij')
+        y, x = y.to(tensor.device), x.to(tensor.device)
+        distance = torch.sqrt((y - center_h) ** 2 + (x - center_w) ** 2)
+        low_pass_mask = (distance <= cutoff).float().unsqueeze(0).unsqueeze(0)
+        
+        # 应用滤波器
+        low_freq_fft = fft_shift * low_pass_mask
+        high_freq_fft = fft_shift * (1 - low_pass_mask)
+        
+        # 逆FFT获得低频和高频部分
+        low_freq = torch.fft.ifft2(torch.fft.ifftshift(low_freq_fft)).real
+        high_freq = torch.fft.ifft2(torch.fft.ifftshift(high_freq_fft)).real
+        
+        print(f"[DEBUG] FFT decomposition results - low_freq range: [{low_freq.min().item():.6f}, {low_freq.max().item():.6f}], high_freq range: [{high_freq.min().item():.6f}, {high_freq.max().item():.6f}]")
+        
+        return low_freq, high_freq
 
 def save_model_card(repo_id: str, images=None, base_model=str, dataset_name=str, repo_folder=None):
     img_str = ""
@@ -793,7 +862,7 @@ def main():
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("Steps")
     
-    for epoch in range(first_epoch, args.num_train_epochs):
+    for epoch in range(first_epoch, args.num_train_epochs):#开始的地方
         unet.train()
         train_loss = 0.0
         for step, batch in enumerate(train_dataloader):
@@ -869,11 +938,12 @@ def main():
                     loss = loss.mean()
                     # print("Loss",loss)
                     
-                #### Add Dist Matching Loss ####
+                #### Add Dist Matching Loss with Frequency Decomposition (run2d.py style) ####
                 if args.dist_match:
-                    # 从当前batch的timesteps中随机选择一个统一的timestep
-                    unified_timestep = timesteps[torch.randint(0, len(timesteps), (1,)).item()]
-                    unified_timesteps = unified_timestep.repeat(bsz)
+                    # 从中等噪声水平的时间步中随机选择一个统一的timestep (200-600)
+                    # 这些是中等噪声水平的时间步，既不太干净也不太嘈杂
+                    unified_timestep = torch.randint(200, min(600, noise_scheduler.config.num_train_timesteps), (1,), device=latents.device).item()
+                    unified_timesteps = torch.full((bsz,), unified_timestep, device=latents.device, dtype=torch.long)
                     
                     # 使用统一timestep重新计算噪声latents
                     unified_noisy_latents = noise_scheduler.add_noise(latents, noise, unified_timesteps)
@@ -887,19 +957,48 @@ def main():
                     elif noise_scheduler.config.prediction_type == "v_prediction":
                         unified_target = noise_scheduler.get_velocity(latents, noise, unified_timesteps)
                     
-                    # 计算统一timestep下的权重
-                    unified_snr = compute_snr(unified_timesteps)
-                    unified_mse_loss_weights = (
-                        torch.stack([unified_snr, args.snr_gamma * torch.ones_like(unified_timesteps)], dim=1).min(dim=1)[0] / unified_snr
-                    )
-                    unified_mse_loss_weights = unified_mse_loss_weights.view(bsz, 1, 1, 1)
+                    # 按照run2d.py的逻辑：从noise prediction恢复到latent space，然后进行频率分解
+                    # 计算alpha_t和sigma_t
+                    alphas_cumprod = noise_scheduler.alphas_cumprod.to(device=latents.device)
+                    alpha_t = alphas_cumprod[unified_timesteps].view(-1, 1, 1, 1)
+                    sigma_t = ((1 - alphas_cumprod[unified_timesteps]) ** 0.5).view(-1, 1, 1, 1)
                     
-                    # 计算加权预测和目标的和
-                    model_pred_ws = (unified_model_pred.float() * unified_mse_loss_weights).sum(dim=0)
-                    target_ws = (unified_target.float() * unified_mse_loss_weights).sum(dim=0)
-                    dist_loss = F.mse_loss(model_pred_ws, target_ws, reduction="mean") 
-                    loss = loss + dist_loss * args.dist_match
-                    # print("Dist",dist_loss)
+                    # 从noise prediction恢复predicted latent
+                    if noise_scheduler.config.prediction_type == "epsilon":
+                        # z_0 = (z_t - sigma_t * eps) / alpha_t^0.5
+                        predicted_latent = (unified_noisy_latents - sigma_t * unified_model_pred) / (alpha_t ** 0.5)
+                        target_latent = (unified_noisy_latents - sigma_t * unified_target) / (alpha_t ** 0.5)
+                    else:  # v_prediction
+                        # For v-prediction, convert to epsilon first then to latent
+                        predicted_eps = (alpha_t ** 0.5) * unified_model_pred + sigma_t * unified_noisy_latents
+                        target_eps = (alpha_t ** 0.5) * unified_target + sigma_t * unified_noisy_latents
+                        predicted_latent = (unified_noisy_latents - sigma_t * predicted_eps) / (alpha_t ** 0.5)
+                        target_latent = (unified_noisy_latents - sigma_t * target_eps) / (alpha_t ** 0.5)
+                    
+                    # 在latent space中进行频率分解 (与run2d.py一致)
+                    pred_low, pred_high = frequency_decomposition(predicted_latent, method='fft')
+                    target_low, target_high = frequency_decomposition(target_latent, method='fft')
+                    
+                    # 计算统一timestep下的权重 - 直接设置为1
+                    unified_mse_loss_weights = torch.ones((bsz, 1, 1, 1), device=latents.device)
+                    
+                    # Low frequency distribution matching (structure preservation)
+                    model_pred_low_ws = (pred_low.float() * unified_mse_loss_weights).sum(dim=0)
+                    target_low_ws = (target_low.float() * unified_mse_loss_weights).sum(dim=0)
+                    low_freq_dist_loss = F.mse_loss(model_pred_low_ws, target_low_ws, reduction="mean")
+                    
+                    # High frequency distribution matching (detail preservation)
+                    model_pred_high_ws = (pred_high.float() * unified_mse_loss_weights).sum(dim=0)
+                    target_high_ws = (target_high.float() * unified_mse_loss_weights).sum(dim=0)
+                    high_freq_dist_loss = F.mse_loss(model_pred_high_ws, target_high_ws, reduction="mean")
+                    
+                    # Combined frequency-aware distribution matching loss
+                    # Weight low frequency higher for structure, moderate weight for high frequency details
+                    low_freq_weight = 0.7  # Higher weight for structural consistency
+                    high_freq_weight = 0.3  # Moderate weight for detail consistency
+                    
+                    dist_loss = (low_freq_dist_loss * low_freq_weight + high_freq_dist_loss * high_freq_weight) * args.dist_match
+                    loss = loss + dist_loss*args.dist_match
                     
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()

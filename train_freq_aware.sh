@@ -1,23 +1,25 @@
 #!/bin/bash
 
-# 使用简单数据集的训练脚本
+# 训练脚本 - 使用频率分解的Distribution Matching
+
 export MODEL_NAME="/home/lkshpc/.cache/huggingface/hub/models--runwayml--stable-diffusion-v1-5/snapshots/451f4fe16113bff5a5d2269ed5ad43b0592e9a14"
 
 # 选择简单数据集 - 可以改成 imagewoof, imagefruit, imageyellow 等
 SIMPLE_DATASET="imagenette"  # 只有10个类别
 
-export OUTPUT_DIR="./LoRA/checkpoint/sim_frq_MMD_${SIMPLE_DATASET}"
+export OUTPUT_DIR="./LoRA/checkpoint/freq_aware_${SIMPLE_DATASET}"
 export DATASET_NAME="/data/st/data/ILSVRC/Data/CLS-LOC/train" 
 export LOG_DIR="./LoRA/logs"
 
-echo "Training with simple dataset: $SIMPLE_DATASET"
+echo "Training with frequency-aware distribution matching"
+echo "Dataset: $SIMPLE_DATASET"
 echo "Output directory: $OUTPUT_DIR"
 
 # 创建输出目录
 mkdir -p $OUTPUT_DIR
 mkdir -p $LOG_DIR
 
-# 启动训练 - 减少了训练参数以便更快完成
+# 启动训练 - 使用频率感知的分布匹配损失
 accelerate launch --mixed_precision="fp16" ./finetune/train_text_to_image_lora.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --train_data_dir $DATASET_NAME \
@@ -38,3 +40,4 @@ accelerate launch --mixed_precision="fp16" ./finetune/train_text_to_image_lora.p
   --max_train_samples=1000
 
 echo "Training completed!"
+echo "Model saved to: $OUTPUT_DIR"

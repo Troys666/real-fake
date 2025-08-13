@@ -12,7 +12,7 @@ length=${#versions[@]}
 echo "start Generation Loop"
 for ((i=0; i<$length; i++)); do
     ver="${versions[$i]}"
-    lora="/data/st/real-fake/LoRA/checkpoint/simple_no_MMD_imagenette/pytorch_lora_weights.safetensors"
+    lora="/data/st/real-fake/LoRA/checkpoint/sim_200_600_MMD_imagenette/pytorch_lora_weights.safetensors"
     method="${methods[$i]}"
     guidance_token="${guidance_tokens[$i]}"
     SDXL="${SDXLs[$i]}"
@@ -24,7 +24,7 @@ for ((i=0; i<$length; i++)); do
     # 生成imagenette数据集 - 需要8个chunk来覆盖所有10个类别
     for chunk_idx in {0..7}; do
         echo "Processing chunk $chunk_idx/8"
-        CUDA_VISIBLE_DEVICES=1 python generate.py --index $chunk_idx --method $method --version $ver --batch_size 24 \
+        CUDA_VISIBLE_DEVICES=2 python generate.py --index $chunk_idx --method $method --version $ver --batch_size 24 \
         --use_caption "blip2" --dataset $dataset --lora_path $lora --if_SDXL $SDXL --use_guidance $guidance_token \
         --img_size 512 --cross_attention_scale 0.5 --image_strength $imst --nchunks 8 \
         --imagenet_path "/data/st/data/ILSVRC/Data/CLS-LOC" \
